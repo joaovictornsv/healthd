@@ -2,10 +2,10 @@
 
 The built-in alert sounds are by [Universfield](https://pixabay.com/users/universfield-28281460/) on Pixabay.
 
-| File | Used for |
-|---|---|
-| `firing.ogg` | firing and critical alerts |
-| `resolved.ogg` | resolved alerts |
+| File | Used for | Original |
+|---|---|---|
+| `firing.ogg` | firing and critical alerts | [New Notification 056](https://pixabay.com/it/sound-effects/tecnologia-new-notification-056-494256/) |
+| `resolved.ogg` | resolved alerts | [New Notification 042](https://pixabay.com/it/sound-effects/tecnologia-new-notification-042-493470/) |
 
 ## License
 
