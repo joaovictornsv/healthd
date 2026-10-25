@@ -43,6 +43,11 @@ repeat_interval = "%s"
 [notify]
 # enabled = true
 # sound = true
+# Audio files to use instead of the built-in sounds. "~" and paths relative
+# to this file's folder work. Unset = built-in.
+# firing_sound = "sounds/firing.mp3"
+# critical_sound = "sounds/critical.mp3"
+# resolved_sound = "sounds/resolved.mp3"
 `, short(defaults.SampleInterval.Duration), short(defaults.RepeatInterval.Duration))
 
 	sections := []struct{ kind, header, extra string }{

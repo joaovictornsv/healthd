@@ -7,6 +7,7 @@ import (
 
 	"github.com/joaovictornsv/healthd/internal/alert"
 	"github.com/joaovictornsv/healthd/internal/api"
+	"github.com/joaovictornsv/healthd/internal/config"
 	"github.com/joaovictornsv/healthd/internal/metrics"
 	"github.com/joaovictornsv/healthd/internal/notify"
 )
@@ -47,11 +48,22 @@ func summary(ind *indicator, ev alert.Event) string {
 	return name
 }
 
+func sounds(cfg *config.Config) notify.Sounds {
+	return notify.Sounds{
+		On: cfg.SoundEnabled(),
+		Files: map[notify.Sound]string{
+			notify.SoundFiring:   cfg.Notify.FiringSound,
+			notify.SoundCritical: cfg.Notify.CriticalSound,
+			notify.SoundResolved: cfg.Notify.ResolvedSound,
+		},
+	}
+}
+
 func message(ind *indicator, ev alert.Event, top []metrics.Proc) notify.Message {
 	name := ind.displayName()
-	m := notify.Message{Key: ind.id, Urgency: notify.Normal, Icon: "dialog-warning", Sound: "dialog-warning"}
+	m := notify.Message{Key: ind.id, Urgency: notify.Normal, Icon: "dialog-warning", Sound: notify.SoundFiring}
 	if ind.alert.Critical {
-		m.Urgency, m.Icon, m.Sound = notify.Critical, "dialog-error", "dialog-error"
+		m.Urgency, m.Icon, m.Sound = notify.Critical, "dialog-error", notify.SoundCritical
 	}
 
 	var body []string
@@ -75,7 +87,7 @@ func message(ind *indicator, ev alert.Event, top []metrics.Proc) notify.Message 
 		body = append(body, fmt.Sprintf("%s is at %s, for %s now.", name, ind.value(), metrics.Duration(time.Since(ind.alert.Since))))
 	case alert.Resolved:
 		m.Title = fmt.Sprintf("✅ %s back to normal", name)
-		m.Urgency, m.Icon, m.Sound = notify.Low, "dialog-information", "complete"
+		m.Urgency, m.Icon, m.Sound = notify.Low, "dialog-information", notify.SoundResolved
 		body = append(body, fmt.Sprintf("%s is at %s.", name, ind.value()))
 	}
 

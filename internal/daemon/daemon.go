@@ -204,9 +204,9 @@ func (d *Daemon) Reload() error {
 	case !cfg.NotifyEnabled():
 		d.notifier = nil
 	case d.notifier == nil:
-		d.notifier = notify.New(cfg.SoundEnabled())
+		d.notifier = notify.New(sounds(cfg))
 	default:
-		d.notifier.SetSound(cfg.SoundEnabled())
+		d.notifier.SetSounds(sounds(cfg))
 	}
 
 	ids := make([]string, len(inds))

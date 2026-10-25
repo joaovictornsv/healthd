@@ -3,6 +3,8 @@
 package notify
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +13,8 @@ import (
 	"sync"
 
 	"github.com/godbus/dbus/v5"
+
+	"github.com/joaovictornsv/healthd/internal/paths"
 )
 
 type Urgency byte
@@ -28,25 +32,50 @@ type Message struct {
 	Body    string
 	Urgency Urgency
 	Icon    string // freedesktop icon name
-	Sound   string // freedesktop sound name
+	Sound   Sound
+}
+
+// Sound is the kind of alert sound to play with a notification.
+type Sound string
+
+const (
+	SoundFiring   Sound = "firing"
+	SoundCritical Sound = "critical"
+	SoundResolved Sound = "resolved"
+)
+
+// Sounds configures alert sounds. Files maps a sound to a user-provided
+// audio file; sounds without one use the built-in file.
+type Sounds struct {
+	On    bool
+	Files map[Sound]string
+}
+
+//go:embed sounds/*.ogg
+var builtin embed.FS
+
+// builtinFile is the embedded file each sound plays by default.
+var builtinFile = map[Sound]string{
+	SoundFiring:   "sounds/firing.ogg",
+	SoundCritical: "sounds/firing.ogg",
+	SoundResolved: "sounds/resolved.ogg",
 }
 
 type Notifier struct {
-	sound bool
+	sounds Sounds
 
-	mu         sync.Mutex
-	conn       *dbus.Conn
-	serverPlay bool              // server plays sound-name hints itself
-	ids        map[string]uint32 // last notification ID per key
+	mu   sync.Mutex
+	conn *dbus.Conn
+	ids  map[string]uint32 // last notification ID per key
 }
 
-func New(sound bool) *Notifier {
-	return &Notifier{sound: sound, ids: map[string]uint32{}}
+func New(s Sounds) *Notifier {
+	return &Notifier{sounds: s, ids: map[string]uint32{}}
 }
 
-func (n *Notifier) SetSound(on bool) {
+func (n *Notifier) SetSounds(s Sounds) {
 	n.mu.Lock()
-	n.sound = on
+	n.sounds = s
 	n.mu.Unlock()
 }
 
@@ -66,12 +95,11 @@ func (n *Notifier) Send(m Message) error {
 		return err
 	}
 
+	// healthd plays its own sound, so ask the server not to add another.
 	hints := map[string]dbus.Variant{
-		"urgency":       dbus.MakeVariant(byte(m.Urgency)),
-		"desktop-entry": dbus.MakeVariant("healthd"),
-	}
-	if n.sound && m.Sound != "" {
-		hints["sound-name"] = dbus.MakeVariant(m.Sound)
+		"urgency":        dbus.MakeVariant(byte(m.Urgency)),
+		"desktop-entry":  dbus.MakeVariant("healthd"),
+		"suppress-sound": dbus.MakeVariant(true),
 	}
 	timeout := int32(10_000)
 	if m.Urgency == Critical {
@@ -88,10 +116,50 @@ func (n *Notifier) Send(m Message) error {
 	}
 	n.ids[m.Key] = id
 
-	if n.sound && m.Sound != "" && !n.serverPlay {
-		go playSound(m.Sound)
+	if n.sounds.On && m.Sound != "" {
+		go play(n.soundFile(m.Sound))
 	}
 	return nil
+}
+
+// soundFile returns the file to play for s: the configured one if set, else
+// the built-in file.
+func (n *Notifier) soundFile(s Sound) string {
+	if file := n.sounds.Files[s]; file != "" {
+		return file
+	}
+	file, err := extract(builtinFile[s])
+	if err != nil {
+		slog.Warn("extract built-in sound", "sound", s, "err", err)
+		return ""
+	}
+	return file
+}
+
+var extractMu sync.Mutex
+
+// extract copies an embedded sound to the cache directory, because players
+// need a real file. The copy is rewritten when the embedded file changes.
+func extract(name string) (string, error) {
+	data, err := builtin.ReadFile(name)
+	if err != nil {
+		return "", err
+	}
+	file := filepath.Join(paths.CacheDir(), name)
+
+	extractMu.Lock()
+	defer extractMu.Unlock()
+	if old, err := os.ReadFile(file); err == nil && bytes.Equal(old, data) {
+		return file, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return "", err
+	}
+	tmp := file + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return "", err
+	}
+	return file, os.Rename(tmp, file)
 }
 
 func (n *Notifier) connect() error {
@@ -107,36 +175,35 @@ func (n *Notifier) connect() error {
 		conn.Close()
 		return fmt.Errorf("no notification service on the session bus: %w", err)
 	}
-	n.serverPlay = false
-	for _, c := range caps {
-		if c == "sound" {
-			n.serverPlay = true
-		}
-	}
 	n.conn = conn
 	return nil
 }
 
-// playSound plays a freedesktop sound with whichever player is installed.
-func playSound(name string) {
-	if bin, err := exec.LookPath("canberra-gtk-play"); err == nil {
-		run(bin, "-i", name)
-		return
-	}
-	file := filepath.Join("/usr/share/sounds/freedesktop/stereo", name+".oga")
-	if _, err := os.Stat(file); err != nil {
-		return
-	}
-	for _, player := range []string{"pw-play", "paplay"} {
-		if bin, err := exec.LookPath(player); err == nil {
-			run(bin, file)
-			return
-		}
-	}
+// players play an audio file and exit. Each is tried in order until one
+// succeeds, so a player that can't decode the format (e.g. mp3 with an old
+// libsndfile) falls through to the next.
+var players = [][]string{
+	{"pw-play"},
+	{"paplay"},
+	{"ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"},
+	{"canberra-gtk-play", "-f"},
 }
 
-func run(bin string, args ...string) {
-	if err := exec.Command(bin, args...).Run(); err != nil {
-		slog.Debug("play sound", "player", bin, "err", err)
+func play(file string) {
+	if file == "" {
+		return
 	}
+	for _, p := range players {
+		bin, err := exec.LookPath(p[0])
+		if err != nil {
+			continue
+		}
+		args := append(p[1:len(p):len(p)], file)
+		err = exec.Command(bin, args...).Run()
+		if err == nil {
+			return
+		}
+		slog.Debug("play sound", "player", p[0], "file", file, "err", err)
+	}
+	slog.Warn("no player could play sound", "file", file)
 }

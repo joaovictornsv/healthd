@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -63,6 +66,12 @@ func (k Kernel) IsEnabled() bool {
 type Notify struct {
 	Enabled *bool `toml:"enabled"`
 	Sound   *bool `toml:"sound"`
+
+	// Audio files that replace the built-in sounds. Load resolves "~" and
+	// paths relative to the config file's directory.
+	FiringSound   string `toml:"firing_sound"`
+	CriticalSound string `toml:"critical_sound"`
+	ResolvedSound string `toml:"resolved_sound"`
 }
 
 type Config struct {
@@ -108,5 +117,32 @@ func Load(path string) (cfg *Config, exists bool, warnings []string, err error) 
 	if cfg.SampleInterval.Duration < time.Second {
 		return nil, true, nil, fmt.Errorf("sample_interval must be at least 1s")
 	}
+	for key, file := range map[string]*string{
+		"firing_sound":   &cfg.Notify.FiringSound,
+		"critical_sound": &cfg.Notify.CriticalSound,
+		"resolved_sound": &cfg.Notify.ResolvedSound,
+	} {
+		if *file == "" {
+			continue
+		}
+		*file = resolvePath(*file, filepath.Dir(path))
+		if _, err := os.Stat(*file); err != nil {
+			warnings = append(warnings, fmt.Sprintf("notify.%s: %v; using the built-in sound", key, err))
+			*file = ""
+		}
+	}
 	return cfg, true, warnings, nil
+}
+
+// resolvePath expands a leading "~" and makes relative paths relative to dir.
+func resolvePath(p, dir string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, p[1:])
+		}
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(dir, p)
+	}
+	return p
 }

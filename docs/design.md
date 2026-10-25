@@ -112,7 +112,7 @@ Repeat interval: 10 minutes. The status API reports where each threshold came fr
 - Sent directly over D-Bus (`org.freedesktop.Notifications`), no external commands.
 - Urgency `normal` for firing, `critical` for critical, `low` for resolved.
 - Each indicator reuses its notification ID, so a repeat or resolve replaces the previous bubble instead of stacking.
-- Sound: `sound-name` hint (`dialog-warning`, `complete`). If the notification server doesn't advertise sound support, play the freedesktop sound with `canberra-gtk-play`, `pw-play` or `paplay`, whichever exists.
+- Sound: one sound for firing, one for critical, one for resolved. Built-in sounds (Ogg Vorbis) are embedded in the binary, so nothing needs installing; they are copied to `$XDG_CACHE_HOME/healthd/sounds/` the first time they play, since players need a file. Each can be replaced in the config by any audio file. healthd plays the file itself (`pw-play`, then `paplay`, `ffplay`, `canberra-gtk-play`, moving on if one can't decode it) and sends the `suppress-sound` hint so the notification server doesn't add its own.
 - CPU load, memory and swap notifications include the top processes.
 
 ## Kernel errors
@@ -139,6 +139,9 @@ repeat_interval = "10m"
 [notify]
 enabled = true
 sound = true
+# firing_sound = "sounds/firing.mp3"   # relative to this file's folder; "~" works too
+# critical_sound = "sounds/critical.mp3"
+# resolved_sound = "sounds/resolved.mp3"
 
 [cpu_temp]
 # sensor = "coretemp"     # hwmon name; detected automatically

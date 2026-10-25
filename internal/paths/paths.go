@@ -18,6 +18,10 @@ func StateDir() string {
 	return filepath.Join(xdgDir("XDG_STATE_HOME", ".local/state"), appName)
 }
 
+func CacheDir() string {
+	return filepath.Join(xdgDir("XDG_CACHE_HOME", ".cache"), appName)
+}
+
 func HistoryDB() string {
 	return filepath.Join(StateDir(), "history.db")
 }
