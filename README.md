@@ -38,3 +38,7 @@ health reload                   # re-read config and re-detect hardware
 
 - [Design](docs/design.md)
 - [Portability: assumptions to remove](docs/portability.md)
+
+## License
+
+[MIT](LICENSE). The built-in alert sounds in `internal/notify/sounds/` are by Universfield on Pixabay and are under the Pixabay Content License instead; see [their README](internal/notify/sounds/README.md).
