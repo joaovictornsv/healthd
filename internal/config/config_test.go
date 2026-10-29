@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSoundPaths(t *testing.T) {
@@ -44,5 +45,23 @@ resolved_sound = "~/done.ogg"
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "critical_sound") {
 		t.Errorf("warnings = %q, want one about critical_sound", warnings)
+	}
+}
+
+func TestCriticalForParses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	conf := "[cpu_temp]\ncritical_at = 92\ncritical_for = \"3m\"\n"
+	if err := os.WriteFile(path, []byte(conf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, warnings, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %q", warnings)
+	}
+	if cfg.CPUTemp.CriticalFor == nil || cfg.CPUTemp.CriticalFor.Duration != 3*time.Minute {
+		t.Errorf("critical_for = %v, want 3m", cfg.CPUTemp.CriticalFor)
 	}
 }

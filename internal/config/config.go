@@ -35,6 +35,8 @@ type Threshold struct {
 	For        *Duration `toml:"for"`
 	ResolveAt  *float64  `toml:"resolve_at"`
 	CriticalAt *float64  `toml:"critical_at"`
+	// CriticalFor is how long the critical level must hold. Unset = same as for.
+	CriticalFor *Duration `toml:"critical_for"`
 }
 
 // IsEnabled reports whether the indicator is on; indicators default to on.
