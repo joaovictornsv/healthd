@@ -84,7 +84,7 @@ Same engine for every indicator:
 
 - **OK → PENDING** when the value crosses `fire_at`
 - **PENDING → FIRING** if it stays there for `for`
-- **Critical** skips the pending period and escalates immediately
+- **Critical** must hold for `for`, the same as the fire level, so one-sample spikes don't alert. Rules without a `for` (kernel errors, battery) escalate immediately
 - **Repeat** a reminder every `repeat_interval` while firing
 - **RESOLVED** notification when the value goes back past `resolve_at` (hysteresis avoids flapping)
 
