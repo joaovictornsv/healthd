@@ -186,6 +186,11 @@ func applyConfig(r alert.Rule, source string, t config.Threshold) (alert.Rule, s
 		r.CriticalAt = fptr(*t.CriticalAt)
 		overridden = true
 	}
+	if t.CriticalFor != nil {
+		d := t.CriticalFor.Duration
+		r.CriticalFor = &d
+		overridden = true
+	}
 	if overridden {
 		source = "config"
 	}

@@ -84,7 +84,7 @@ Same engine for every indicator:
 
 - **OK → PENDING** when the value crosses `fire_at`
 - **PENDING → FIRING** if it stays there for `for`
-- **Critical** must hold for `for`, the same as the fire level, so one-sample spikes don't alert. Rules without a `for` (kernel errors, battery) escalate immediately
+- **Critical** must hold for `critical_for` (default: `for`) so one-sample spikes don't alert. A zero duration (kernel errors, battery) escalates immediately
 - **Repeat** a reminder every `repeat_interval` while firing
 - **RESOLVED** notification when the value goes back past `resolve_at` (hysteresis avoids flapping)
 
@@ -161,7 +161,7 @@ fire_at = 90
 # extra_patterns = ["amdgpu.*timeout"]
 ```
 
-Every indicator section accepts `enabled`, `fire_at`, `for`, `resolve_at`, `critical_at`.
+Every indicator section accepts `enabled`, `fire_at`, `for`, `resolve_at`, `critical_at`, `critical_for`.
 
 ## History
 

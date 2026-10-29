@@ -20,7 +20,10 @@ type Rule struct {
 	ResolveAt float64
 	// CriticalAt is optional; nil means the indicator has no critical level.
 	CriticalAt *float64
-	Repeat     time.Duration
+	// CriticalFor is how long the critical level must hold before escalating.
+	// nil means the same as For.
+	CriticalFor *time.Duration
+	Repeat      time.Duration
 }
 
 func (r Rule) worse(v, threshold float64) bool {
@@ -71,12 +74,16 @@ func (a *Alert) Update(r Rule, v float64, active bool, now time.Time) Event {
 		if a.State == Firing && a.Critical {
 			return a.repeat(r, now)
 		}
-		// Critical must hold for r.For, like the fire level, so a one-sample
-		// spike doesn't alert. Rules without a For still escalate at once.
+		// Critical must hold for CriticalFor (default For), so a one-sample
+		// spike doesn't alert. A zero duration still escalates at once.
 		if a.criticalSince.IsZero() {
 			a.criticalSince = now
 		}
-		if now.Sub(a.criticalSince) >= r.For {
+		need := r.For
+		if r.CriticalFor != nil {
+			need = *r.CriticalFor
+		}
+		if now.Sub(a.criticalSince) >= need {
 			if a.State != Firing {
 				a.set(Firing, now)
 			}

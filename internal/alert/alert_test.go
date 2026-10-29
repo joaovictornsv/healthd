@@ -103,3 +103,29 @@ func TestBelowDirectionAndInactiveClears(t *testing.T) {
 		{4 * time.Minute, 9, false, None, OK, false},
 	})
 }
+
+func TestCriticalForOverridesFor(t *testing.T) {
+	// Fire after 5m, but critical at 92 only escalates after 2m above it.
+	r := Rule{FireAt: 80, For: 5 * time.Minute, ResolveAt: 70, CriticalAt: ptr(92),
+		CriticalFor: durPtr(2 * time.Minute), Repeat: 10 * time.Minute}
+	run(t, r, []step{
+		{0, 95, true, None, Pending, false},
+		{1 * time.Minute, 95, true, None, Pending, false},
+		{2 * time.Minute, 95, true, Escalated, Firing, true},
+		{3 * time.Minute, 60, true, Resolved, OK, false},
+	})
+}
+
+func TestCriticalForShortSpikeStillIgnored(t *testing.T) {
+	r := Rule{FireAt: 80, For: 5 * time.Minute, ResolveAt: 70, CriticalAt: ptr(92),
+		CriticalFor: durPtr(3 * time.Minute), Repeat: 10 * time.Minute}
+	run(t, r, []step{
+		{0, 95, true, None, Pending, false},
+		{2 * time.Minute, 60, true, None, OK, false},
+		{3 * time.Minute, 95, true, None, Pending, false},
+		{5 * time.Minute, 95, true, None, Pending, false},
+		{6 * time.Minute, 95, true, Escalated, Firing, true},
+	})
+}
+
+func durPtr(d time.Duration) *time.Duration { return &d }

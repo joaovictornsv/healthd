@@ -89,6 +89,7 @@ func writeRule(b *strings.Builder, s *spec) {
 	fmt.Fprintf(b, "# resolve_at = %g\n", s.rule.ResolveAt)
 	if s.rule.CriticalAt != nil {
 		fmt.Fprintf(b, "# critical_at = %g\n", *s.rule.CriticalAt)
+		fmt.Fprintf(b, "# critical_for = \"%s\"  # unset = same as for\n", short(s.rule.For))
 	}
 }
 
