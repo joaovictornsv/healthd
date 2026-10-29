@@ -52,14 +52,34 @@ func TestPendingResetsWhenValueDrops(t *testing.T) {
 	})
 }
 
-func TestCriticalSkipsPendingAndEscalates(t *testing.T) {
+func TestCriticalSpikeIsIgnored(t *testing.T) {
 	run(t, tempRule, []step{
-		{0, 95, true, Escalated, Firing, true},
-		{1 * time.Minute, 96, true, None, Firing, true},
-		{11 * time.Minute, 95, true, Repeated, Firing, true},
-		{12 * time.Minute, 85, true, None, Firing, false}, // de-escalates quietly
-		{13 * time.Minute, 93, true, Escalated, Firing, true},
-		{14 * time.Minute, 60, true, Resolved, OK, false},
+		{0, 95, true, None, Pending, false},
+		{10 * time.Second, 60, true, None, OK, false}, // back to normal before For
+		{1 * time.Minute, 95, true, None, Pending, false},
+		{1*time.Minute + 10*time.Second, 96, true, None, Pending, false},
+		{2 * time.Minute, 60, true, None, OK, false},
+	})
+}
+
+func TestCriticalEscalatesAfterFor(t *testing.T) {
+	run(t, tempRule, []step{
+		{0, 95, true, None, Pending, false},
+		{4 * time.Minute, 95, true, None, Pending, false},
+		{5 * time.Minute, 95, true, Escalated, Firing, true},
+		{6 * time.Minute, 96, true, None, Firing, true},
+		{15 * time.Minute, 95, true, Repeated, Firing, true},
+		{16 * time.Minute, 85, true, None, Firing, false}, // de-escalates quietly
+		{17 * time.Minute, 93, true, None, Firing, false}, // critical restarts its For
+		{23 * time.Minute, 93, true, Escalated, Firing, true},
+		{24 * time.Minute, 60, true, Resolved, OK, false},
+	})
+}
+
+func TestCriticalWithoutForEscalatesAtOnce(t *testing.T) {
+	run(t, Rule{FireAt: 1, ResolveAt: 1, CriticalAt: ptr(1), Repeat: 10 * time.Minute}, []step{
+		{0, 1, true, Escalated, Firing, true},
+		{10 * time.Second, 0, true, Resolved, OK, false},
 	})
 }
 

@@ -47,6 +47,8 @@ type Alert struct {
 	Critical     bool      `json:"critical"`
 	Since        time.Time `json:"since"` // when the current state started
 	LastNotified time.Time `json:"-"`
+
+	criticalSince time.Time // when the value first reached the critical level
 }
 
 // Update feeds one sample into the state machine. active=false means the
@@ -57,6 +59,7 @@ func (a *Alert) Update(r Rule, v float64, active bool, now time.Time) Event {
 	}
 
 	if !active {
+		a.criticalSince = time.Time{}
 		if a.State == OK {
 			return None
 		}
@@ -65,7 +68,15 @@ func (a *Alert) Update(r Rule, v float64, active bool, now time.Time) Event {
 	}
 
 	if r.CriticalAt != nil && r.worse(v, *r.CriticalAt) {
-		if a.State != Firing || !a.Critical {
+		if a.State == Firing && a.Critical {
+			return a.repeat(r, now)
+		}
+		// Critical must hold for r.For, like the fire level, so a one-sample
+		// spike doesn't alert. Rules without a For still escalate at once.
+		if a.criticalSince.IsZero() {
+			a.criticalSince = now
+		}
+		if now.Sub(a.criticalSince) >= r.For {
 			if a.State != Firing {
 				a.set(Firing, now)
 			}
@@ -73,7 +84,8 @@ func (a *Alert) Update(r Rule, v float64, active bool, now time.Time) Event {
 			a.LastNotified = now
 			return Escalated
 		}
-		return a.repeat(r, now)
+	} else {
+		a.criticalSince = time.Time{}
 	}
 
 	if r.worse(v, r.FireAt) {
