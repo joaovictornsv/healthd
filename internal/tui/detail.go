@@ -66,11 +66,15 @@ func (m Model) detailView() string {
 	}
 	tabLine := spread(" "+strings.Join(tabs, " "), stats, w)
 
-	chartHeight := max(4, m.height-2-2-panelLines-2)
+	half := w / 2
+	info := contextPanel(ind, half-2)
+	// The kernel panel also holds the boot check, so it can grow; its chart
+	// (mostly zeros) gives up the room.
+	panelHeight := max(panelLines, len(info))
+	chartHeight := max(4, m.height-2-2-panelHeight-2)
 	chart := m.chart(ind, w, chartHeight)
 
-	half := w / 2
-	left := lipgloss.NewStyle().Width(half).Render(strings.Join(contextPanel(ind, half-2), "\n"))
+	left := lipgloss.NewStyle().Width(half).Render(strings.Join(info, "\n"))
 	right := lipgloss.NewStyle().Width(w - half).Render(strings.Join(m.recentAlerts(ind, w-half-2), "\n"))
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 
@@ -237,6 +241,9 @@ func contextPanel(ind api.Indicator, w int) []string {
 		lines = append(lines, " "+bold.Render(ind.Device),
 			fmt.Sprintf("   used %s · free %s · total %s", bytes(used), bytes(free), bytes(total)))
 	case "kernel":
+		if boot := bootCheckLines(ind, w); len(boot) > 0 {
+			lines = append(append(lines, boot...), "")
+		}
 		lines = append(lines, " "+bold.Render("Recent kernel errors"))
 		recent, _ := ind.Detail["recent"].([]any)
 		if len(recent) == 0 {
@@ -244,8 +251,7 @@ func contextPanel(ind api.Indicator, w int) []string {
 		}
 		for _, r := range recent[:min(3, len(recent))] {
 			e, _ := r.(map[string]any)
-			msg, _ := e["message"].(string)
-			lines = append(lines, "   "+truncate(msg, w-4))
+			lines = append(lines, "   "+muted.Render(when(parseTime(e["time"])))+" "+kernelEventLine(e))
 		}
 	}
 	if ind.Kind == "disk_temp" || ind.Kind == "cpu_temp" {

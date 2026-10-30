@@ -90,6 +90,8 @@ Same engine for every indicator:
 
 Direction depends on the indicator: most fire when the value goes **above** the threshold; battery fires when it goes **below**. Battery alerts only apply while discharging; plugging in clears them silently.
 
+Kernel errors logged before healthd started (earlier in this boot, or in the previous boot) don't go through this engine; see [Boot check](#boot-check).
+
 ## Default thresholds
 
 Temperature defaults come from the hardware's own limits when available (hwmon `temp*_crit` / `temp*_max`, thermal-zone critical trip point). They are early warnings ("slow down"), not danger limits.
@@ -117,14 +119,55 @@ Repeat interval: 10 minutes. The status API reports where each threshold came fr
 
 ## Kernel errors
 
-Only error-level kernel messages (priority ≤ 3) that match a pattern count. Default patterns (case-insensitive, extendable in config):
+Kernel messages that match a pattern count. Each pattern has a priority: it only matches messages at that priority or worse, so a pattern can look at warnings without every other pattern flooding on them. Patterns are case-insensitive.
+
+Built-in, error level (priority ≤ 3, `err`):
 
 - memory: `out of memory`, `oom-kill`
 - storage: `i/o error`, `blk_update_request`, `nvme.*(timeout|reset|error)`, `ata\d+.*(failed|error|exception|hard resetting)`
 - filesystems: `ext4-fs error`, `btrfs.*(error|corrupt)`, `xfs.*(error|corrupt|shutdown)`
 - hardware: `thermal`, `throttl`, `mce:`, `hardware error`
 
-Source: a long-running `journalctl -k -p err -f -o json`, else `/dev/kmsg`. If neither is readable, the indicator shows the reason (e.g. user not in the `adm`/`systemd-journal` group).
+PCIe link errors, down to `info` (on by default, `pcie_errors = false` turns them off):
+
+- `PCIe Bus Error`, `AER: .*error`, and the AER detail lines (`[ 0] RxErr`, `[12] Timeout`, `BadTLP`, `BadDLLP`, …), matched by their `[N]` bit prefix so `Timeout` doesn't match unrelated messages
+
+The kernel logs even corrected PCIe errors at `warning` (`PCIe Bus Error`, `RxErr`) or `info` (`AER: … error message received`). A healthy link logs none of them, so they are on by default: a burst is how a failing link, e.g. to an NVMe drive, shows up, sometimes seconds before the machine freezes. On hardware with constant harmless corrected errors, turn them off or add an ignore pattern. Lines seen on every boot, like `pci …: retraining failed` and `AER: enabled with IRQ …`, don't match.
+
+Config adds `extra_patterns` (error level), `extra_patterns_at` (keyed by priority: `warning = [...]`), and `ignore_patterns`, which skips matching messages. A built-in ignore list holds known-harmless lines that a pattern would catch, such as Intel's `proc_thermal_add, will continue` on every boot.
+
+Matches less than 2 s apart are grouped into one burst with a count (capped at 1 minute per burst), so a burst of 1,500 lines is one entry, the in-memory list (200 bursts) doesn't overflow, and the indicator's value is the true line count.
+
+Source: a long-running `journalctl -k -p <least severe priority any pattern needs> -f -o json`, else `/dev/kmsg`. If neither is readable, the indicator shows the reason (e.g. user not in the `adm`/`systemd-journal` group).
+
+## Boot check
+
+healthd runs as a user service, so it starts at login. Errors logged during boot and disk unlock, or in a boot that froze, happened before it started. On start it scans:
+
+- **this boot so far** (`journalctl -k -b 0`): the live follower then continues from the scan's last journal cursor, so nothing is missed or counted twice
+- **the previous boot** (`journalctl -k -b -1`, found through `journalctl --list-boots`): skipped quietly when the journal has none (volatile journal, first boot)
+
+With `/dev/kmsg` instead of the journal, this boot is scanned from the kernel ring buffer (as far back as it reaches) and the previous boot can't be checked; the summary says so.
+
+Findings are kept per boot and per pattern group (count, first and last time, first line), in the kernel indicator's `backlog` detail.
+
+**Summary notification.** A while after healthd starts (`delay`, default 3 minutes, so the first minutes of the session are covered too), healthd sends one notification:
+
+- errors found: critical urgency, one line per boot, e.g. `Previous boot: 1,601 PCIe link errors (first at 08:43:06)`, plus where to look (`health` kernel view, `journalctl -k -b -1`)
+- nothing found: a low-urgency `Boot check: all good` (`notify_when_clean = false` silences it)
+
+**Alert model.** Backlog findings don't go through the alert engine. The kernel indicator counts matches in a sliding window, which a finding from before login has already left, and keeping an alert firing for it would repeat every `repeat_interval` for the whole boot. So each finding is delivered once, keyed by boot ID in the history database (`meta` table):
+
+- the summary is sent at most once per boot ID; a restart or reload in the same boot doesn't send it again
+- with the summary on, it is the only notification for the backlog: there is no separate alert for the previous boot
+- with the summary off, errors in the previous boot get one alert as soon as the scan finishes, once per previous-boot ID. Errors from earlier in this boot are then only shown in the TUI
+- a summary also marks the previous boot as reported, so turning the summary off later in the same boot doesn't alert about it again
+- the finding is stored as a `boot` event in the alert history either way
+- `[notify] enabled = false` sends nothing, but the result is still recorded and shown
+
+Matches after healthd starts still go through the kernel indicator and its live alerts.
+
+`healthd -previous-boot <boot ID>` scans a given boot as the previous one, to test the check against an older boot.
 
 ## Config
 
@@ -158,7 +201,15 @@ critical_at = 15
 fire_at = 90
 
 [kernel]
-# extra_patterns = ["amdgpu.*timeout"]
+# extra_patterns = ["amdgpu.*timeout"]       # error level
+# extra_patterns_at = { warning = ["i915.*underrun"] }
+# ignore_patterns = ["some harmless message"]
+# pcie_errors = true
+
+[kernel.boot_summary]
+# enabled = true
+# delay = "3m"
+# notify_when_clean = true
 ```
 
 Every indicator section accepts `enabled`, `fire_at`, `for`, `resolve_at`, `critical_at`, `critical_for`.
@@ -169,14 +220,14 @@ Every indicator section accepts `enabled`, `fire_at`, `for`, `resolve_at`, `crit
 - **SQLite** at `$XDG_STATE_HOME/healthd/history.db` (default `~/.local/state/healthd/history.db`):
   - raw samples: 24 hours
   - 1-minute averages: 30 days
-  - alert events (fired / escalated / resolved): 90 days
+  - alert events (fired / escalated / resolved / boot): 90 days
 - Why persist: restarts and reboots are exactly when you want to look back (overheating overnight, an OOM before a freeze). Size stays in the low MBs.
 
 ## API (unix socket, HTTP/JSON)
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/v1/status` | host info, all indicators with value, state, thresholds, sparkline, details |
+| GET | `/v1/status` | host info, all indicators with value, state, thresholds, sparkline, details (kernel: `recent` bursts, boot `backlog`, `boot_summary`) |
 | GET | `/v1/history?id=&range=` | chart data: `15m`, `1h` (memory), `24h`, `7d` (SQLite) |
 | GET | `/v1/events?id=&limit=` | past alert events |
 | POST | `/v1/snooze` | `{"id": "cpu_load", "duration": "1h"}` or `"until_resolved"` |
@@ -244,7 +295,7 @@ Three screens:
   - Memory, swap: top processes by memory
   - Battery: charge/discharge rate, cycle count
   - Disk usage: per-mount used / free
-  - Kernel: full error lines
+  - Kernel: the boot check (per boot: count, first/last time and first line for each kind of error, and whether the summary was sent), then recent errors with burst counts
 - **Thresholds** with their source (`hardware` / `default` / `config`)
 - **Recent alerts** for this indicator
 - `←` / `→` jump to the previous/next indicator without going back to the dashboard
