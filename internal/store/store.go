@@ -128,6 +128,21 @@ func (s *Store) Events(indicator string, limit int) ([]api.Event, error) {
 	return out, rows.Err()
 }
 
+// Meta returns a stored value, or "" if the key is not set.
+func (s *Store) Meta(key string) (string, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM meta WHERE key = ?`, key).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return v, err
+}
+
+func (s *Store) SetMeta(key, value string) error {
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, key, value)
+	return err
+}
+
 // Raw returns raw samples newer than since, oldest first.
 func (s *Store) Raw(indicator string, since time.Time) ([]api.Point, error) {
 	return s.points(`SELECT ts, value FROM samples WHERE indicator = ? AND ts >= ? ORDER BY ts`,

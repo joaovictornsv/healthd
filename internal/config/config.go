@@ -56,14 +56,49 @@ type DiskUsage struct {
 }
 
 type Kernel struct {
-	Enabled       *bool     `toml:"enabled"`
-	Window        *Duration `toml:"window"`
-	ExtraPatterns []string  `toml:"extra_patterns"`
+	Enabled *bool     `toml:"enabled"`
+	Window  *Duration `toml:"window"`
+	// ExtraPatterns are matched against error-level messages (err or worse).
+	ExtraPatterns []string `toml:"extra_patterns"`
+	// ExtraPatternsAt maps a priority name ("warning", "info") to patterns
+	// matched down to that priority.
+	ExtraPatternsAt map[string][]string `toml:"extra_patterns_at"`
+	// IgnorePatterns skip messages that would otherwise match.
+	IgnorePatterns []string `toml:"ignore_patterns"`
+	// PCIeErrors turns on the PCIe link (AER) error patterns.
+	PCIeErrors  *bool       `toml:"pcie_errors"`
+	BootSummary BootSummary `toml:"boot_summary"`
 }
 
 func (k Kernel) IsEnabled() bool {
 	return k.Enabled == nil || *k.Enabled
 }
+
+func (k Kernel) PCIeEnabled() bool {
+	return k.PCIeErrors == nil || *k.PCIeErrors
+}
+
+// BootSummary is the one notification per boot, sent a while after healthd
+// starts, about kernel errors in the previous boot and this boot so far.
+type BootSummary struct {
+	Enabled *bool     `toml:"enabled"`
+	Delay   *Duration `toml:"delay"`
+	// NotifyWhenClean also sends a short "all good" when nothing was found.
+	NotifyWhenClean *bool `toml:"notify_when_clean"`
+}
+
+const DefaultBootSummaryDelay = 3 * time.Minute
+
+func (b BootSummary) IsEnabled() bool { return b.Enabled == nil || *b.Enabled }
+
+func (b BootSummary) DelayOrDefault() time.Duration {
+	if b.Delay == nil {
+		return DefaultBootSummaryDelay
+	}
+	return b.Delay.Duration
+}
+
+func (b BootSummary) NotifyClean() bool { return b.NotifyWhenClean == nil || *b.NotifyWhenClean }
 
 type Notify struct {
 	Enabled *bool `toml:"enabled"`
@@ -118,6 +153,9 @@ func Load(path string) (cfg *Config, exists bool, warnings []string, err error) 
 	}
 	if cfg.SampleInterval.Duration < time.Second {
 		return nil, true, nil, fmt.Errorf("sample_interval must be at least 1s")
+	}
+	if cfg.Kernel.BootSummary.DelayOrDefault() < 0 {
+		return nil, true, nil, fmt.Errorf("kernel.boot_summary.delay must not be negative")
 	}
 	for key, file := range map[string]*string{
 		"firing_sound":   &cfg.Notify.FiringSound,

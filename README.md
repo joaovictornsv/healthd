@@ -34,6 +34,12 @@ health unsnooze cpu_load
 health reload                   # re-read config and re-detect hardware
 ```
 
+## Kernel errors and the boot check
+
+The kernel indicator watches the kernel log for errors: out of memory, I/O and filesystem errors, thermal problems, and PCIe link errors (e.g. a failing NVMe link logging `RxErr`). Since `healthd` starts at login, it also scans what was logged before: this boot so far and the previous boot, which catches a boot that froze. About 3 minutes after it starts it sends one summary notification per boot: what it found, or "all good".
+
+Options live in `[kernel]` and `[kernel.boot_summary]` in the config; the starter config lists them with their defaults. See [Kernel errors](docs/design.md#kernel-errors) and [Boot check](docs/design.md#boot-check).
+
 ## Docs
 
 - [Design](docs/design.md)

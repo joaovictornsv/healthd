@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/joaovictornsv/healthd/internal/alert"
@@ -159,8 +160,41 @@ func kernelReading(k *metrics.KernelWatcher, window time.Duration) (metrics.Read
 		Value:  float64(n),
 		Active: true,
 		Status: status,
-		Detail: map[string]any{"source": source, "recent": recent},
+		Detail: map[string]any{"source": source, "recent": recent, "backlog": k.Backlog()},
 	}, nil
+}
+
+// kernelPatterns turns the kernel config into the patterns to match. The
+// built-in patterns and extra_patterns apply to error-level messages only,
+// so lowering the priority for one kind of message doesn't flood on
+// everything else at that level.
+func kernelPatterns(k config.Kernel) ([]metrics.KernelPattern, error) {
+	var out []metrics.KernelPattern
+	add := func(exprs []string, prio int, group string) {
+		for _, e := range exprs {
+			out = append(out, metrics.KernelPattern{Expr: e, Priority: prio, Group: group})
+		}
+	}
+	// PCIe first: an AER line that also matches a built-in pattern (such as
+	// "nvme ... AER: Error of this Agent") counts as a PCIe error.
+	if k.PCIeEnabled() {
+		add(metrics.PCIePatterns, metrics.PrioInfo, metrics.GroupPCIe)
+	}
+	add(metrics.DefaultKernelPatterns, metrics.PrioErr, metrics.GroupKernel)
+	add(k.ExtraPatterns, metrics.PrioErr, metrics.GroupKernel)
+	names := make([]string, 0, len(k.ExtraPatternsAt))
+	for name := range k.ExtraPatternsAt {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		prio, err := metrics.ParsePriority(name)
+		if err != nil {
+			return nil, fmt.Errorf("kernel.extra_patterns_at: %w", err)
+		}
+		add(k.ExtraPatternsAt[name], prio, metrics.GroupKernel)
+	}
+	return out, nil
 }
 
 // applyConfig overrides default thresholds with any values set in config.

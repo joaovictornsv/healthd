@@ -31,6 +31,7 @@ func main() {
 	flag.StringVar(&opts.ConfigPath, "config", paths.ConfigFile(), "config file")
 	flag.StringVar(&opts.SocketPath, "socket", paths.Socket(), "API socket")
 	flag.StringVar(&opts.DBPath, "db", paths.HistoryDB(), "history database")
+	flag.StringVar(&opts.PreviousBoot, "previous-boot", "", "journal boot `ID` to scan as the previous boot (for testing the boot check)")
 	debug := flag.Bool("debug", false, "verbose logging")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, usage)

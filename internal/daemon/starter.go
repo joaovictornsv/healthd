@@ -73,7 +73,23 @@ repeat_interval = "%s"
 # enabled = true
 # window = "%s"
 # extra_patterns = []      # regular expressions, matched case-insensitively
-`, short(defaultKernelWindow))
+#                          # against error-level messages (err or worse)
+# pcie_errors = true       # PCIe link (AER) errors such as RxErr or BadTLP,
+#                          # matched down to info level
+# ignore_patterns = []     # messages to skip even when a pattern matches, on
+#                          # top of a built-in list of known-harmless ones
+# Extra patterns for less severe messages, keyed by the least severe
+# priority to match (warning, notice, info, debug):
+# extra_patterns_at = { warning = ["amdgpu.*ring .* timeout"] }
+
+[kernel.boot_summary]
+# One notification a while after healthd starts, with the kernel errors
+# found in the previous boot (e.g. one that froze) and in this boot so far.
+# Sent once per boot.
+# enabled = true
+# delay = "%s"             # after healthd starts
+# notify_when_clean = true # also send a short "all good" when nothing is found
+`, short(defaultKernelWindow), short(config.DefaultBootSummaryDelay))
 
 	_, err = f.WriteString(b.String())
 	return err
@@ -185,10 +201,7 @@ func Detect(w io.Writer, configPath string) error {
 		return err
 	}
 	h := hw.Detect(cfg.CPUTemp.Sensor, cfg.CPUTemp.Label)
-	kernel, err := metrics.NewKernelWatcher(metrics.DefaultKernelPatterns)
-	if err != nil {
-		return err
-	}
+	kernel := metrics.NewKernelWatcher(metrics.Journalctl{})
 	writeHardware(w, h, "")
 	fmt.Fprintf(w, "\nIndicators (config: %s):\n", configPath)
 	for _, s := range buildSpecs(cfg, h, kernel) {

@@ -65,3 +65,38 @@ func TestCriticalForParses(t *testing.T) {
 		t.Errorf("critical_for = %v, want 3m", cfg.CPUTemp.CriticalFor)
 	}
 }
+
+func TestKernelOptions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	conf := `[kernel]
+pcie_errors = false
+extra_patterns_at = { warning = ["i915.*underrun"] }
+
+[kernel.boot_summary]
+delay = "30s"
+notify_when_clean = false
+`
+	if err := os.WriteFile(path, []byte(conf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, warnings, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %q", warnings)
+	}
+	k := cfg.Kernel
+	if k.PCIeEnabled() || len(k.ExtraPatternsAt["warning"]) != 1 {
+		t.Errorf("kernel = %+v", k)
+	}
+	if !k.BootSummary.IsEnabled() || k.BootSummary.DelayOrDefault() != 30*time.Second || k.BootSummary.NotifyClean() {
+		t.Errorf("boot_summary = %+v", k.BootSummary)
+	}
+
+	// Defaults.
+	d := Default().Kernel
+	if !d.PCIeEnabled() || !d.BootSummary.IsEnabled() || !d.BootSummary.NotifyClean() || d.BootSummary.DelayOrDefault() != 3*time.Minute {
+		t.Errorf("defaults = %+v", d)
+	}
+}

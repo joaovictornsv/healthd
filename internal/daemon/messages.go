@@ -124,7 +124,11 @@ func advice(ind *indicator) []string {
 		var lines []string
 		if recent, ok := ind.reading.Detail["recent"].([]metrics.KernelEvent); ok {
 			for _, e := range recent[:min(3, len(recent))] {
-				lines = append(lines, truncate(e.Message, 160))
+				line := truncate(e.Message, 160)
+				if e.Count > 1 {
+					line += fmt.Sprintf(" (×%s)", api.Thousands(e.Count))
+				}
+				lines = append(lines, line)
 			}
 		}
 		return lines

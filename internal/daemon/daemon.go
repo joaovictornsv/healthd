@@ -36,6 +36,9 @@ type Options struct {
 	ConfigPath string
 	SocketPath string
 	DBPath     string
+	// PreviousBoot overrides which boot the boot check scans as the
+	// previous one (a journal boot ID). For testing.
+	PreviousBoot string
 }
 
 type indicator struct {
@@ -59,6 +62,7 @@ type Daemon struct {
 	startedAt time.Time
 	store     *store.Store
 	kernel    *metrics.KernelWatcher
+	boot      *bootCheck
 	procs     *metrics.ProcSampler
 
 	reloadMu sync.Mutex // serializes reloads
@@ -93,9 +97,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	defer st.Close()
 	d.store = st
 
-	if d.kernel, err = metrics.NewKernelWatcher(metrics.DefaultKernelPatterns); err != nil {
-		return err
-	}
+	d.kernel = metrics.NewKernelWatcher(metrics.Journalctl{})
+	d.kernel.PreviousBoot = d.opts.PreviousBoot
+	d.boot = newBootCheck(st, d.startedAt)
 	if err := d.Reload(); err != nil {
 		return err
 	}
@@ -162,8 +166,13 @@ func (d *Daemon) Reload() error {
 	for _, w := range warnings {
 		slog.Warn(w)
 	}
-	if err := d.kernel.SetPatterns(append(append([]string{}, metrics.DefaultKernelPatterns...), cfg.Kernel.ExtraPatterns...)); err != nil {
-		return fmt.Errorf("kernel extra_patterns: %w", err)
+	patterns, err := kernelPatterns(cfg.Kernel)
+	if err != nil {
+		return err
+	}
+	ignore := append(append([]string{}, metrics.DefaultKernelIgnore...), cfg.Kernel.IgnorePatterns...)
+	if err := d.kernel.SetPatterns(patterns, ignore); err != nil {
+		return fmt.Errorf("kernel patterns: %w", err)
 	}
 
 	h := hw.Detect(cfg.CPUTemp.Sensor, cfg.CPUTemp.Label)
@@ -294,6 +303,23 @@ func (d *Daemon) tick(now time.Time) {
 			}
 		}
 	}
+	d.checkBoot(now)
+}
+
+// checkBoot sends the boot check once the backlog scan and delay are done.
+func (d *Daemon) checkBoot(now time.Time) {
+	d.mu.Lock()
+	k, notifier := d.cfg.Kernel, d.notifier
+	d.mu.Unlock()
+	if !k.IsEnabled() {
+		return
+	}
+	var send func(notify.Message) error
+	if notifier != nil {
+		send = notifier.Send
+	}
+	opts := bootOptions{summary: k.BootSummary.IsEnabled(), delay: k.BootSummary.DelayOrDefault(), notifyClean: k.BootSummary.NotifyClean()}
+	d.boot.check(now, opts, d.kernel.Backlog(), send, d.store.AddEvent)
 }
 
 func (ind *indicator) push(now time.Time, v float64) {
@@ -335,9 +361,33 @@ func (d *Daemon) status() api.Status {
 	}
 	now := time.Now()
 	for _, ind := range d.inds {
-		s.Indicators = append(s.Indicators, ind.toAPI(now, d.topFor(ind.kind)))
+		out := ind.toAPI(now, d.topFor(ind.kind))
+		if ind.kind == "kernel" {
+			out.Detail = d.bootDetail(out.Detail)
+		}
+		s.Indicators = append(s.Indicators, out)
 	}
 	return s
+}
+
+// bootDetail adds the boot check result to the kernel indicator's detail.
+func (d *Daemon) bootDetail(detail map[string]any) map[string]any {
+	backlog, ok := detail["backlog"].(metrics.Backlog)
+	if !ok {
+		return detail
+	}
+	summary, due := d.boot.view(backlog.Current.BootID)
+	out := make(map[string]any, len(detail)+1)
+	for k, v := range detail {
+		out[k] = v
+	}
+	switch {
+	case summary != nil:
+		out["boot_summary"] = summary
+	case !due.IsZero():
+		out["boot_summary_due"] = due
+	}
+	return out
 }
 
 func (ind *indicator) toAPI(now time.Time, top []metrics.Proc) api.Indicator {

@@ -200,9 +200,11 @@ func context(ind api.Indicator) string {
 	case "kernel":
 		if recent, ok := ind.Detail["recent"].([]any); ok && len(recent) > 0 {
 			if e, ok := recent[0].(map[string]any); ok {
-				msg, _ := e["message"].(string)
-				return "last: " + msg
+				return "last: " + kernelEventLine(e)
 			}
+		}
+		if line := BootFindingLine(ind); line != "" {
+			return line
 		}
 		source, _ := ind.Detail["source"].(string)
 		return "source: " + source

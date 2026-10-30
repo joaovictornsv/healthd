@@ -124,6 +124,9 @@ func status(c *api.Client, asJSON bool) error {
 		if ind.Error != "" {
 			details = paint("31", "error: "+ind.Error)
 		}
+		if note := tui.BootFindingLine(ind); note != "" {
+			details += " · " + paint("31", note)
+		}
 		if ind.SnoozedUntil != nil {
 			details += fmt.Sprintf(" · zz until %s", ind.SnoozedUntil.Format("15:04"))
 		} else if ind.SnoozeUntilResolved {
