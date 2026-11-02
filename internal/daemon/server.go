@@ -75,7 +75,10 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, _ *http.Request) {
 var historyRanges = map[string]time.Duration{
 	"15m": 15 * time.Minute,
 	"1h":  time.Hour,
+	"3h":  3 * time.Hour,
+	"6h":  6 * time.Hour,
 	"24h": 24 * time.Hour,
+	"3d":  3 * 24 * time.Hour,
 	"7d":  7 * 24 * time.Hour,
 }
 
@@ -90,7 +93,7 @@ func (d *Daemon) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	span, ok := historyRanges[rng]
 	if !ok {
-		http.Error(w, "range must be one of 15m, 1h, 24h, 7d", http.StatusBadRequest)
+		http.Error(w, "range must be one of 15m, 1h, 3h, 6h, 24h, 3d, 7d", http.StatusBadRequest)
 		return
 	}
 	if span <= ringWindow {

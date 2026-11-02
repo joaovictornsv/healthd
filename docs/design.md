@@ -228,7 +228,7 @@ Every indicator section accepts `enabled`, `fire_at`, `for`, `resolve_at`, `crit
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/v1/status` | host info, all indicators with value, state, thresholds, sparkline, details (kernel: `recent` bursts, boot `backlog`, `boot_summary`) |
-| GET | `/v1/history?id=&range=` | chart data: `15m`, `1h` (memory), `24h`, `7d` (SQLite) |
+| GET | `/v1/history?id=&range=` | chart data: `15m`, `1h` (memory), `3h`, `6h`, `24h`, `3d`, `7d` (SQLite) |
 | GET | `/v1/events?id=&limit=` | past alert events |
 | POST | `/v1/snooze` | `{"id": "cpu_load", "duration": "1h"}` or `"until_resolved"` |
 | DELETE | `/v1/snooze?id=` | cancel snooze |
@@ -273,7 +273,7 @@ Three screens:
 
 ```
  CPU temp                                                        FIRING for 7m · 84°C
- [15m]  1h   24h   7d                                         min 52 · avg 74 · max 88
+ [15m]  1h   3h   6h   24h   3d   7d                          min 52 · avg 74 · max 88
  92 ┤┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈ critical
  80 ┤┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈⣠⣴⣶⣾⣿⣷⣶⣾⣿⣿⣷⣶⣾⣿⣿⣿⣿⣷⣶⣾⣿⣿⣿⣷⣶⣶⣾⣿⣿⣿┈┈┈┈┈┈┈┈┈┈┈┈┈┈ fire
  70 ┤                ⢀⣠⣴⡾⠋
@@ -284,11 +284,11 @@ Three screens:
    make            612%                    today 14:02  FIRING     81°C
    node            145%                    today 11:40  RESOLVED   68°C
    firefox          38%                    yesterday    CRITICAL   93°C
- esc back   1-4 range   ←→ prev/next indicator   s snooze
+ esc back   1-7 range   ←→ prev/next indicator   s snooze
 ```
 
 - **Chart:** braille line chart with dashed lines at the fire and critical thresholds
-- **Ranges:** 15m and 1h from memory; 24h and 7d from SQLite
+- **Ranges:** 15m and 1h from memory; 3h, 6h, 24h, 3d and 7d from SQLite (raw samples up to 24h, 1-minute averages beyond)
 - **Stats:** min / avg / max for the selected range
 - **Context panel per indicator:**
   - CPU load, CPU temp: top processes by CPU
@@ -325,7 +325,7 @@ Active alerts on top, past alert events from SQLite below. Answers "what happene
 | `←↑↓→` / `hjkl` | move between cards |
 | `enter` | open detail |
 | `esc` | back |
-| `1`–`4` | chart range (detail screen) |
+| `1`–`7` | chart range (detail screen) |
 | `a` | alerts screen |
 | `s` | snooze |
 | `r` | reload config |

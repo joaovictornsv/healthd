@@ -22,7 +22,7 @@ const (
 	alertsScreen
 )
 
-var ranges = []string{"15m", "1h", "24h", "7d"}
+var ranges = []string{"15m", "1h", "3h", "6h", "24h", "3d", "7d"}
 
 type Model struct {
 	client *api.Client
@@ -257,7 +257,7 @@ func (m Model) detailKey(key string) (tea.Model, tea.Cmd) {
 			i = (i + 1) % len(ids)
 		}
 		return m.openDetail(ids[i])
-	case "1", "2", "3", "4":
+	case "1", "2", "3", "4", "5", "6", "7":
 		m.rng = ranges[key[0]-'1']
 		m.history = nil
 		return m, m.fetchHistory()
@@ -443,7 +443,7 @@ func (m Model) footer() string {
 	var keys string
 	switch m.screen {
 	case detailScreen:
-		keys = "esc back   1-4 range   ←→ prev/next   s snooze   a alerts   ? help   q quit"
+		keys = "esc back   1-7 range   ←→ prev/next   s snooze   a alerts   ? help   q quit"
 	case alertsScreen:
 		keys = "esc back   ↑↓ scroll   r reload   ? help   q quit"
 	default:
@@ -457,7 +457,7 @@ func helpView() string {
 		{"←↑↓→ / hjkl", "move between cards"},
 		{"enter", "open detail"},
 		{"esc", "back"},
-		{"1 – 4", "chart range: 15m, 1h, 24h, 7d (detail)"},
+		{"1 – 7", "chart range: 15m, 1h, 3h, 6h, 24h, 3d, 7d (detail)"},
 		{"←→ / hl", "previous / next indicator (detail)"},
 		{"a", "alerts screen"},
 		{"s", "snooze notifications for the selected card"},
